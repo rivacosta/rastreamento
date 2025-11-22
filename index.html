@@ -1,79 +1,10 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rastreador de Lucratividade MEXC - Via Proxy</title>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; }
-        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .instance { border: 1px solid #00c087; padding: 15px; margin-bottom: 20px; border-radius: 6px; background-color: #e6fff5; }
-        input[type="number"], select, button, input[type="text"] { padding: 10px; margin-right: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        button { cursor: pointer; background-color: #00c087; color: white; border: none; transition: background-color 0.3s; }
-        button:hover { background-color: #00996b; }
-        .profit { font-weight: bold; margin-top: 10px; font-size: 1.2em; }
-        .positive { color: green; }
-        .negative { color: red; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🟢 Rastreador de Posições MEXC</h1>
-        <p>Ajustado para contornar o erro CORS usando um proxy no Vercel/Netlify.</p>
-        <button onclick="addInstance()">Adicionar Novo Par</button>
-        <hr>
-        <div id="instances-container">
-            </div>
-    </div>
-
-    <script>
+<script>
         let instanceCount = 0;
-        // 🚨 MUDANÇA PRINCIPAL: O frontend agora chama o seu próprio domínio (proxy)
-        // O proxy irá interceptar essa chamada e enviá-la para a API da MEXC.
-        const PROXY_BASE_URL = "/api-mexc-proxy/v2/market/ticker"; 
-        // O prefixo '/api-mexc-proxy' será configurado no vercel.json
+        // 🚨 MUDANÇA 1: A nova URL de proxy que aponta para o Ticker V3 da MEXC
+        const PROXY_BASE_URL = "/api-mexc-proxy/v3/ticker/price"; 
+        
+        // ... (função addInstance() permanece a mesma) ...
 
-        /**
-         * Adiciona uma nova instância de rastreamento ao DOM.
-         */
-        function addInstance() {
-            instanceCount++;
-            const container = document.getElementById('instances-container');
-            const instanceDiv = document.createElement('div');
-            instanceDiv.className = 'instance';
-            instanceDiv.id = `instance-${instanceCount}`;
-            instanceDiv.innerHTML = `
-                <h3>Posição #${instanceCount}</h3>
-                
-                <label for="pair-symbol-${instanceCount}">Par de Moedas (ex: BTCUSDT ou CAKEUSDT):</label>
-                <input type="text" id="pair-symbol-${instanceCount}" placeholder="Ex: BTCUSDT" size="20" style="text-transform: uppercase;">
-                <br><br>
-                
-                <label for="initial-price-${instanceCount}">Preço Inicial:</label>
-                <input type="number" id="initial-price-${instanceCount}" placeholder="0.00" step="any" min="0">
-                <br><br>
-                
-                <label for="operation-type-${instanceCount}">Tipo de Operação:</label>
-                <select id="operation-type-${instanceCount}">
-                    <option value="buy">Compra (Long)</option>
-                    <option value="sell">Venda (Short)</option>
-                </select>
-                <br><br>
-                
-                <button onclick="startTracking(${instanceCount})">Iniciar Rastreamento</button>
-                <button onclick="removeInstance(${instanceCount})" style="background-color: #dc3545;">Remover</button>
-                
-                <p>Preço Atual: <span id="current-price-${instanceCount}">Aguardando...</span></p>
-                <p class="profit">Lucratividade (In Momentum): <span id="profit-value-${instanceCount}">0.00%</span></p>
-            `;
-            container.appendChild(instanceDiv);
-        }
-
-        /**
-         * Inicia o rastreamento periódico de preço via API da MEXC para uma instância.
-         * @param {number} id - ID da instância.
-         */
         function startTracking(id) {
             const pairSymbolInput = document.getElementById(`pair-symbol-${id}`);
             const initialPriceInput = document.getElementById(`initial-price-${id}`);
@@ -82,15 +13,13 @@
             const profitValueSpan = document.getElementById(`profit-value-${id}`);
             
             // Tratamento do Símbolo: Garante MAIÚSCULAS e remove caracteres inválidos
-            let symbolInput = pairSymbolInput.value.toUpperCase().trim();
-            symbolInput = symbolInput.replace(/[^A-Z]/g, ''); 
-            
-            // Formatação para o V2 (Ex: CAKEUSDT -> CAKE_USDT)
-            const symbol = symbolInput.replace(/(USDT|USDC|BTC|ETH)$/, `_$&`);
+            let symbol = pairSymbolInput.value.toUpperCase().trim();
+            // 🚨 MUDANÇA 2: Não precisa mais do underscore! O V3 usa o formato simples (CAKEUSDT).
+            symbol = symbol.replace(/[^A-Z0-9]/g, ''); 
             
             const initialPrice = parseFloat(initialPriceInput.value);
 
-            if (!symbolInput || isNaN(initialPrice) || initialPrice <= 0) {
+            if (!symbol || isNaN(initialPrice) || initialPrice <= 0) {
                 alert('Por favor, insira um par válido e um preço inicial positivo.');
                 return;
             }
@@ -101,23 +30,22 @@
 
             const updatePrice = async () => {
                 try {
-                    // Chamada para a URL do Proxy configurada no Vercel/Netlify
+                    // Chamada para a nova URL do Proxy (V3)
                     const response = await axios.get(PROXY_BASE_URL, {
                         params: {
-                            symbol: symbol // O par de moedas formatado (ex: CAKE_USDT)
+                            symbol: symbol // O par de moedas no formato simples (ex: CAKEUSDT)
                         }
                     });
 
-                    // Extração do preço da resposta do MEXC V2
-                    const data = response.data.data;
+                    // 🚨 MUDANÇA 3: A estrutura de dados do V3 é diferente. O preço está no campo 'price'.
+                    const currentPrice = parseFloat(response.data.price);
                     
-                    if (!data || data.length === 0 || !data[0].last) {
+                    if (isNaN(currentPrice)) {
                         throw new Error("Resposta da API inválida ou par não encontrado.");
                     }
                     
-                    const currentPrice = parseFloat(data[0].last);
+                    // --- O restante da lógica de cálculo e UI permanece a mesma ---
                     
-                    // --- Cálculo da Lucratividade ---
                     let percentageProfit;
                     
                     if (operationType === 'buy') {
@@ -128,7 +56,6 @@
                         percentageProfit = 0;
                     }
 
-                    // --- Atualização da UI ---
                     const currencySymbol = symbol.includes('USDT') ? '$' : '';
                     
                     currentPriceSpan.textContent = `${currencySymbol}${currentPrice.toFixed(8)}`; 
@@ -137,7 +64,6 @@
                     profitValueSpan.className = percentageProfit >= 0 ? 'positive' : 'negative';
 
                 } catch (error) {
-                    // O erro de rede (CORS) deve parar aqui, se a requisição do proxy falhar, a mensagem é exibida
                     console.error(`Erro ao buscar preço para ${symbol}:`, error);
                     currentPriceSpan.textContent = 'Erro de Rede/API'; 
                     profitValueSpan.textContent = '0.00%';
@@ -151,18 +77,5 @@
             alert(`Rastreamento para ${symbol} iniciado!`);
         }
 
-        /**
-         * Remove uma instância e seu rastreamento.
-         */
-        function removeInstance(id) {
-            clearInterval(window[`interval-${id}`]); // Para o rastreamento
-            const instanceDiv = document.getElementById(`instance-${id}`);
-            if (instanceDiv) {
-                instanceDiv.remove();
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', addInstance);
+        // ... (funções removeInstance() e o listener DOMContentLoaded permanecem as mesmas) ...
     </script>
-</body>
-</html>
