@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api-mexc-proxy/:path*",
+      "destination": "https://www.mexc.com/open/api/:path*"
+    }
+  ]
+}
